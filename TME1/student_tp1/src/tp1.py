@@ -1,4 +1,3 @@
-
 import torch
 from torch.autograd import Function
 from torch.autograd import gradcheck
@@ -24,27 +23,26 @@ class MSE(Function):
     def forward(ctx, yhat, y):
         ## Garde les valeurs nécessaires pour le backwards
         ctx.save_for_backward(yhat, y)
-
-        mse = 1/len(y) * torch.sum((yhat - y)**2)
+        mse = 1/len(y) * torch.sum(torch.square((torch.sub(yhat ,y))))
         return mse
 
     @staticmethod
     def backward(ctx, grad_output):
         ## Calcul du gradient du module par rapport a chaque groupe d'entrées
         yhat, y = ctx.saved_tensors
-        grad_mse_y = -2/len(y) * (yhat - y) * grad_output
-        grad_mse_yhat = 2/len(y) * (yhat - y) * grad_output
+        grad_mse_y = (-2/len(y) * (torch.sub(yhat ,y)) * grad_output)
+        grad_mse_yhat = (2/len(y) * (torch.sub(yhat , y)) * grad_output)
         return grad_mse_y, grad_mse_yhat
     
 
 #  TODO:  Implémenter la fonction Linear(X, W, b)sur le même modèle que MSE
 class Linear(Function):
-    """Début d'implementation de la fonction Lineat"""
+    """Début d'implementation de la fonction Linear"""
     @staticmethod
     def forward(ctx, X,W,b):
         ## Garde les valeurs nécessaires pour le backwards
         ctx.save_for_backward(X, W, b)
-        output = torch.mm(X,W) + b
+        output = torch.sum(torch.mm(X,W)+b, dim=1)
         return output
 
     @staticmethod
@@ -58,4 +56,3 @@ class Linear(Function):
 ## Utile dans ce TP que pour le script tp1_gradcheck
 mse = MSE.apply
 linear = Linear.apply
-

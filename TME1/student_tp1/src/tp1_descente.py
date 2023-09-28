@@ -15,7 +15,8 @@ epsilon = 0.05
 
 writer = SummaryWriter()
 for n_iter in range(100):
-    ##  TODO:  Calcul du forward (loss)
+    ##  Calcul du forward (loss)
+    loss = MSE.forward(Linear.forward(x, w, b), y)
 
     # `loss` doit correspondre au coût MSE calculé à cette itération
     # on peut visualiser avec
@@ -25,8 +26,10 @@ for n_iter in range(100):
     # Sortie directe
     print(f"Itérations {n_iter}: loss {loss}")
 
-    ##  TODO:  Calcul du backward (grad_w, grad_b)
-
-    ##  TODO:  Mise à jour des paramètres du modèle
+    ##  Calcul du backward (grad_w, grad_b)
+    grad_loss_w = Linear.backward(Linear.ctx,(MSE.backward(MSE.ctx,loss)))[1]
+    grad_loss_b = Linear.backward(Linear.ctx,(MSE.backward(MSE.ctx,loss)))[2]
+    w = w - epsilon * grad_loss_w
+    b = b - epsilon * grad_loss_b
 
 
