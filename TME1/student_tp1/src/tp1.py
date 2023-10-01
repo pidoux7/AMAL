@@ -8,10 +8,13 @@ class Context:
 
     Un contexte différent doit être utilisé à chaque forward
     """
+
     def __init__(self):
         self._saved_tensors = ()
+
     def save_for_backward(self, *args):
         self._saved_tensors = args
+
     @property
     def saved_tensors(self):
         return self._saved_tensors
@@ -19,39 +22,38 @@ class Context:
 
 class MSE(Function):
     """Début d'implementation de la fonction MSE"""
+
     @staticmethod
     def forward(ctx, yhat, y):
         ## Garde les valeurs nécessaires pour le backwards
         ctx.save_for_backward(yhat, y)
-        mse = 1/len(y) * torch.sum(torch.square((torch.sub(yhat ,y))))
-        return mse
+        return (yhat - y) ** 2 
 
     @staticmethod
     def backward(ctx, grad_output):
         ## Calcul du gradient du module par rapport a chaque groupe d'entrées
         yhat, y = ctx.saved_tensors
-        grad_mse_y = (-2/len(y) * (torch.sub(yhat ,y)) * grad_output)
-        grad_mse_yhat = (2/len(y) * (torch.sub(yhat , y)) * grad_output)
-        return grad_mse_y, grad_mse_yhat
-    
+        d_yhat = grad_output * 2 * (yhat - y)
+        d_y = grad_output * -2 * (yhat - y)
+        return d_yhat, d_y
 
-#  TODO:  Implémenter la fonction Linear(X, W, b)sur le même modèle que MSE
+
 class Linear(Function):
-    """Début d'implementation de la fonction Linear"""
     @staticmethod
-    def forward(ctx, X,W,b):
+    def forward(ctx, X, W, b):
         ## Garde les valeurs nécessaires pour le backwards
         ctx.save_for_backward(X, W, b)
-        output = torch.sum(torch.mm(X,W)+b, dim=1)
-        return output
+        return X @ W + b
 
     @staticmethod
     def backward(ctx, grad_output):
         ## Calcul du gradient du module par rapport a chaque groupe d'entrées
-        grad_x = torch.mm(grad_output, ctx.saved_tensors[1].t())
-        grad_w = torch.mm(ctx.saved_tensors[0].t(), grad_output)
-        grad_b = grad_output.sum(0)
-        return grad_x, grad_w,grad_b
+        X, W, _ = ctx.saved_tensors
+        grad_x = grad_output @ W.T  # (n, d)
+        grad_w = X.T @ grad_output  # (d, p)
+        grad_b = grad_output  # (n, p)
+        return grad_x, grad_w, grad_b
+
 
 ## Utile dans ce TP que pour le script tp1_gradcheck
 mse = MSE.apply
