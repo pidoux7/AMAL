@@ -1,5 +1,5 @@
 <p>
-  <img src="amal.png" alt="amal" align="center">
+  <img src="ml.png" alt="amal" align="center">
 </p>
 
 # AMAL
