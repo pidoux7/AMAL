@@ -1,12 +1,46 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
+from typing import Callable
+from torch.utils.data import Dataset, DataLoader
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class RNN(nn.Module):
-    #  TODO:  Implémenter comme décrit dans la question 1
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        output_dim: int = 1,
+        activation: Callable[[torch.Tensor], torch.Tensor] = nn.Tanh(),
+        decode_activation: Callable[[torch.Tensor], torch.Tensor] = nn.Softmax()
+
+    ):
+        super().__init__()
+        self.input_dim = input_dim
+        self.latent_dim = latent_dim
+        self.output_dim = output_dim
+        self.activation = activation
+        self.decode_activation = decode_activation
+        #self.h0 = nn.Parameter(torch.zeros(1, latent_dim))
+
+        self.f_x = nn.Linear(input_dim, latent_dim)
+        self.f_h = nn.Linear(latent_dim, latent_dim)
+        self.f_d = nn.Linear(latent_dim, output_dim)
+
+    def one_step(self, x, h):
+        return self.activation(self.f_x(x) + self.f_h(h))
+
+    def forward(self, input, h):
+        for i in range(input.shape[0]):
+            h = self.one_step(input[i,:,:], h)
+        return h #TODO on retourne que le dernier ?
+
+    def decode(self, h):
+        return self.decode_activation(self.f_d(h))
+
+
+
 
 class SampleMetroDataset(Dataset):
     def __init__(self, data,length=20,stations_max=None):
