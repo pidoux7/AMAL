@@ -1,4 +1,4 @@
-from utils import RNN, SampleMetroDataset
+from utils2 import RNN, SampleMetroDataset
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -29,7 +29,7 @@ data_test = DataLoader(ds_test, batch_size=BATCH_SIZE,shuffle=False)
 
 #INITIALISATION DU RNN
 latent_dim = 10
-rnn = RNN(input_dim=DIM_INPUT, latent_dim=latent_dim, output_dim=CLASSES, activation = nn.Tanh(), decode_activation = nn.Softmax(), first_step = True)
+rnn = RNN(input_dim=DIM_INPUT, latent_dim=latent_dim, output_dim=CLASSES, activation = nn.Tanh(), decode_activation = nn.Softmax())
 
 # init APPRENTISSAGE
 rnn.to(device)
@@ -48,12 +48,13 @@ accuracy_test = torchmetrics.classification.Accuracy(task="multiclass", num_clas
 for epoch in tqdm(range(nb_epochs)):
     list_loss = []
     for X, y in data_train:
+        X = torch.transpose(X ,0,1)
         X = X.to(device)
         y = y.to(device)
         optimizer.zero_grad()
-        h = torch.zeros((X.size(0),latent_dim)).to(device)
+        h = torch.zeros((X.size(1),latent_dim)).to(device)
         h = rnn.forward(X, h).to(device)
-        y_pred = rnn.decode(h[:, -1])
+        y_pred = rnn.decode(h[-1, :])
         loss = f_cout(y_pred, y)
         list_loss.append(loss.item())
         accuracy_train(y_pred.argmax(1), y)
@@ -66,11 +67,12 @@ for epoch in tqdm(range(nb_epochs)):
     with torch.no_grad():
         list_loss = []
         for X, y in data_test:
+            X = torch.transpose(X ,0,1)
             X = X.to(device)
             y = y.to(device)
-            h = torch.zeros(X.size(0),latent_dim).to(device)
+            h = torch.zeros(X.size(1),latent_dim).to(device)
             h = rnn.forward(X, h).to(device)
-            y_pred = rnn.decode(h[:,-1]).to(device)
+            y_pred = rnn.decode(h[-1,:]).to(device)
             loss = f_cout(y_pred, y)
             list_loss.append(loss.item())
             accuracy_test(y_pred.argmax(1), y)
@@ -92,8 +94,5 @@ plt.show()
 print("fin")
 accuracy_train.reset()
 accuracy_test.reset()
-
-
-
 
 

@@ -1,4 +1,4 @@
-from utils2 import RNN, ForecastMetroDataset
+from utils import RNN, SampleMetroDataset
 import torch
 import os
 from torch.utils.data import DataLoader
@@ -18,7 +18,7 @@ class State :
         self.epoch, self.iteration = 0,0
 
 # Nombre de stations utilisé
-CLASSES = 10
+CLASSES = 3
 #Longueur des séquences
 LENGTH = 20
 # Dimension de l'entrée (1 (in) ou 2 (in/out))
@@ -30,13 +30,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #Chargement des données
 PATH = "/home/pidoux/master/deepdac/AMAL/TME4/data/"
 
-matrix_train, matrix_test = torch.load(open(PATH+"hzdataset.pch", "rb"))
-ds_train = ForecastMetroDataset(
-    matrix_train[:, :, :CLASSES, :DIM_INPUT], length=LENGTH)
-ds_test = ForecastMetroDataset(
-    matrix_test[:, :, :CLASSES, :DIM_INPUT], length=LENGTH, stations_max=ds_train.stations_max)
-data_train = DataLoader(ds_train, batch_size=BATCH_SIZE, shuffle=True)
-data_test = DataLoader(ds_test, batch_size=BATCH_SIZE, shuffle=False)
+matrix_train, matrix_test = torch.load(open(PATH+"hzdataset.pch","rb"))
+ds_train = SampleMetroDataset(matrix_train[:, :, :CLASSES, :DIM_INPUT], length=LENGTH)
+ds_test = SampleMetroDataset(matrix_test[:, :, :CLASSES, :DIM_INPUT], length = LENGTH, stations_max = ds_train.stations_max)
+data_train = DataLoader(ds_train,batch_size=BATCH_SIZE,shuffle=True)
+data_test = DataLoader(ds_test, batch_size=BATCH_SIZE,shuffle=False)
 
 writer = SummaryWriter("runs/runs"+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 accuracy_train = torchmetrics.classification.Accuracy(task="multiclass", num_classes=CLASSES).to(device)
@@ -46,57 +44,53 @@ accuracy_test = torchmetrics.classification.Accuracy(task="multiclass", num_clas
 latent_dim = 15
 nb_epochs = 20
 lr = 0.001
-f_cout = nn.MSELoss()
+f_cout = nn.CrossEntropyLoss()
 
 
 print(f"running on {device}")
-savepath = Path("model_classes_10_many_to_many.pch")
+savepath = Path("model_classes_3.pch")
 if savepath.is_file():
     with savepath.open("rb") as fp:
         state = torch.load(fp)
 #creer un nouvel état à partir d'un modèle et d'un optimiseur
 else:
-    model = RNN(input_dim=DIM_INPUT, latent_dim=latent_dim, output_dim=DIM_INPUT, activation = nn.Tanh(), decode_activation = nn.Softmax(), first_step = True)
+    model = RNN(input_dim=DIM_INPUT, latent_dim=latent_dim, output_dim=CLASSES, activation = nn.Tanh(), decode_activation = nn.Softmax())
     model = model.to(device)
-    optim = torch.optim.Adam(model.parameters(), lr=lr)
+    optim= torch.optim.Adam(model.parameters(), lr=lr)
     state = State(model, optim)
 
 # APPRENTISSAGE
 for epoch in tqdm(range(nb_epochs)):
+    list_loss = []
     for X, y in data_train:
-        X = torch.transpose(X, 0, 1)
-        y = torch.transpose(y, 0, 1)
         X = X.to(device)
         y = y.to(device)
         state.optim.zero_grad()
-        h = torch.zeros((X.size(1),X.size(2),latent_dim)).to(device)
-
-        for i in range(X.size(0)):
-            h = state.model.one_step(X[i,:,:,:], h).to(device)
-            yt = state.model.decode(h).to(device)
-            loss = f_cout(yt, y[i,:,:,:])
+        h = torch.zeros((X.size(0),latent_dim)).to(device)
+        h = state.model.forward(X, h).to(device)
+        y_pred = state.model.decode(h[:, -1]).to(device)
+        loss = f_cout(y_pred, y)
         writer.add_scalar("Loss/train", loss, epoch)
+        writer.add_scalar("Accuracy/train", accuracy_train(y_pred.argmax(1), y), epoch)
         accuracy_train.reset()
         loss.backward()
         state.optim.step()
-
     with savepath.open("wb") as fp:
         state.epoch += 1
         torch.save(state, fp)
 
 #TEST
     with torch.no_grad():
+        list_loss = []
         for X, y in data_test:
-            X = torch.transpose(X, 0, 1)
-            y = torch.transpose(y, 0, 1)
             X = X.to(device)
             y = y.to(device)
-            h = torch.zeros((X.size(1),X.size(2),latent_dim)).to(device)
-
-            for i in range(X.size(0)):
-                h = state.model.one_step(X[i,:,:,:], h).to(device)
-                yt = state.model.decode(h).to(device)
-                loss = f_cout(yt, y[i,:,:,:])
+            h = torch.zeros(X.size(0),latent_dim).to(device)
+            h = state.model.forward(X, h).to(device)
+            y_pred = state.model.decode(h[:,-1]).to(device)
+            loss = f_cout(y_pred, y)
             writer.add_scalar("Loss/test", loss, epoch)
+            writer.add_scalar("Accuracy/test", accuracy_train(y_pred.argmax(1), y), epoch)
+
 
 print("fin")

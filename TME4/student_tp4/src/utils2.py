@@ -14,6 +14,7 @@ class RNN(nn.Module):
         output_dim,
         activation = nn.Tanh(),
         decode_activation = nn.Softmax(),
+        first_step = False,
         *args,
         **kwargs
     ):
@@ -23,22 +24,23 @@ class RNN(nn.Module):
         self.output_dim = output_dim
         self.activation = activation
         self.decode_activation = decode_activation
+        self.first_step = first_step
         self.f_x = nn.Linear(input_dim, latent_dim)
         self.f_h = nn.Linear(latent_dim, latent_dim)
         self.f_d = nn.Linear(latent_dim, output_dim)
 
     def forward(self, x, h):
         '''
-        x : seq_len x batch x dim
+        x : batch x seq_len x dim
         h : batch x latent
-        return :  batch x seq_len x latent        
+        return :  seq_len x batch x latent        
         '''
         
-        H = torch.zeros((h.size(0), x.size(1), h.size(1)))
+        H = torch.zeros((x.size(0), x.size(1), h.size(1)))
         # cas du premier pas de temps
-        for i in range(x.size(1)):
-            h = self.one_step(x[:, i, :], h)
-            H[:, i, :] = h
+        for i in range(x.size(0)):
+            h = self.one_step(x[i,:,:], h)
+            H[i,:,:] = h
         return H
     
     def one_step(self, x, h):
@@ -55,7 +57,6 @@ class RNN(nn.Module):
         h : batch x latent
         return : batch x output_dim
         """
-
         return self.decode_activation(self.f_d(h))
 
 
