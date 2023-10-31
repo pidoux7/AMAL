@@ -10,6 +10,7 @@ import torchmetrics
 import datetime
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
+import icecream as ic
 
 class State :
     def __init__(self, model, optim) :
@@ -18,9 +19,9 @@ class State :
         self.epoch, self.iteration = 0,0
 
 # Nombre de stations utilisé
-CLASSES = 10
+CLASSES = 80
 #Longueur des séquences
-LENGTH = 20
+LENGTH = 40
 # Dimension de l'entrée (1 (in) ou 2 (in/out))
 DIM_INPUT = 2
 #Taille du batch
@@ -43,10 +44,11 @@ accuracy_train = torchmetrics.classification.Accuracy(task="multiclass", num_cla
 accuracy_test = torchmetrics.classification.Accuracy(task="multiclass", num_classes=CLASSES).to(device)
 
 #INITIALISATION DU RNN
-latent_dim = 15
-nb_epochs = 20
-lr = 0.001
+latent_dim = 10
+nb_epochs = 100
+lr = 0.01
 f_cout = nn.MSELoss()
+pas_temps = 3
 
 
 print(f"running on {device}")
@@ -70,11 +72,11 @@ for epoch in tqdm(range(nb_epochs)):
         y = y.to(device)
         state.optim.zero_grad()
         h = torch.zeros((X.size(1),X.size(2),latent_dim)).to(device)
-
-        for i in range(X.size(0)):
+        loss=0
+        for i in range(X.size(0)-pas_temps):
             h = state.model.one_step(X[i,:,:,:], h).to(device)
             yt = state.model.decode(h).to(device)
-            loss = f_cout(yt, y[i,:,:,:])
+            loss += f_cout(yt, y[i+pas_temps,:,:,:])
         writer.add_scalar("Loss/train", loss, epoch)
         accuracy_train.reset()
         loss.backward()
@@ -92,11 +94,11 @@ for epoch in tqdm(range(nb_epochs)):
             X = X.to(device)
             y = y.to(device)
             h = torch.zeros((X.size(1),X.size(2),latent_dim)).to(device)
-
-            for i in range(X.size(0)):
+            loss = 0
+            for i in range(X.size(0)-pas_temps):
                 h = state.model.one_step(X[i,:,:,:], h).to(device)
                 yt = state.model.decode(h).to(device)
-                loss = f_cout(yt, y[i,:,:,:])
+                loss += f_cout(yt, y[i+pas_temps,:,:,:])
             writer.add_scalar("Loss/test", loss, epoch)
 
 print("fin")

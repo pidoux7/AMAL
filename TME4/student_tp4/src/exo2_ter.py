@@ -33,7 +33,7 @@ rnn = RNN(input_dim=DIM_INPUT, latent_dim=latent_dim, output_dim=CLASSES, activa
 
 # init APPRENTISSAGE
 rnn.to(device)
-nb_epochs = 10
+nb_epochs = 50
 lr = 0.001
 f_cout = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(rnn.parameters(), lr=lr)
@@ -48,7 +48,7 @@ accuracy_test = torchmetrics.classification.Accuracy(task="multiclass", num_clas
 for epoch in tqdm(range(nb_epochs)):
     list_loss = []
     for X, y in data_train:
-        X = torch.transpose(X ,0,1)
+        X = torch.transpose(X, 0, 1)
         X = X.to(device)
         y = y.to(device)
         optimizer.zero_grad()

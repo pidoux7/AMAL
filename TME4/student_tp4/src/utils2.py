@@ -13,7 +13,7 @@ class RNN(nn.Module):
         latent_dim,
         output_dim,
         activation = nn.Tanh(),
-        decode_activation = nn.Softmax(),
+        decode_activation = nn.Softmax(-1),
         first_step = False,
         *args,
         **kwargs
@@ -25,13 +25,13 @@ class RNN(nn.Module):
         self.activation = activation
         self.decode_activation = decode_activation
         self.first_step = first_step
-        self.f_x = nn.Linear(input_dim, latent_dim)
+        self.f_x = nn.Linear(input_dim, latent_dim, bias=False)
         self.f_h = nn.Linear(latent_dim, latent_dim)
         self.f_d = nn.Linear(latent_dim, output_dim)
 
     def forward(self, x, h):
         '''
-        x : batch x seq_len x dim
+        x : x seq_len x batch x dim
         h : batch x latent
         return :  seq_len x batch x latent        
         '''
@@ -59,7 +59,11 @@ class RNN(nn.Module):
         """
         return self.decode_activation(self.f_d(h))
 
-
+class State :
+    def __init__(self, model, optim) :
+        self.model = model
+        self.optim = optim
+        self.epoch, self.iteration = 0,0
 
 
 class SampleMetroDataset(Dataset):
