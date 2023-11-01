@@ -57,7 +57,10 @@ class RNN(nn.Module):
         h : batch x latent
         return : batch x output_dim
         """
-        return self.decode_activation(self.f_d(h))
+        if self.first_step:
+            return self.decode_activation(self.f_d(h))
+        else:
+            return self.f_d(h)
 
 class State :
     def __init__(self, model, optim) :

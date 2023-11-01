@@ -67,14 +67,14 @@ if savepath.is_file():
 
 nb_characters = 100
 DIM_INPUT_FIRST = len(id2lettre)
-DIM_INPUT = 96
-DIM_LATENT = 50
+DIM_INPUT = 80
+DIM_LATENT = 40
 DIM_OUTPUT = DIM_INPUT_FIRST
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+soft = softmax = nn.Softmax(dim=2)
 
-f_cout = nn.CrossEntropyLoss()
 with torch.no_grad():
-    X = torch.tensor(F.one_hot(string2code("c"),num_classes = DIM_INPUT_FIRST)).reshape(1,1,-1).to(device).float().transpose(0,1)
+    X = torch.tensor(F.one_hot(string2code("d"),num_classes = DIM_INPUT_FIRST)).reshape(1,1,-1).to(device).float().transpose(0,1)
     h = torch.zeros((1, DIM_LATENT)).to(device)
 
     embedding = state.model[1](state.model[0](X)).to(device)
@@ -83,7 +83,7 @@ with torch.no_grad():
     phrase_bin = []
     for i in range(nb_characters):
         h = state.model[2].one_step(embedding,h).to(device)
-        y_pred = state.model[2].decode(h).to(device)
+        y_pred = soft(state.model[2].decode(h)).to(device)
         embedding = state.model[1](state.model[0](y_pred)).to(device)
         l = int(tirage(y_pred[0,0,:]))
         phrase_bin.append(l)

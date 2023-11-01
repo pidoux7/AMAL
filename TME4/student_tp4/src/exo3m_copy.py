@@ -67,9 +67,9 @@ for epoch in tqdm(range(nb_epochs)):
         #print('h',h.size())
         loss = 0
         for t in range(X.size(0) - pas_temps):
-            h = state.model.one_step(X[t], h)
             ht = h
-            for p in range(1,pas_temps+1):
+            h = state.model.one_step(X[t], h)
+            for p in range(0,pas_temps+1):
                 ht = state.model.one_step(X[t+p], ht)
             y_pred = state.model.decode(ht)
             y_true = y[t+pas_temps]
@@ -89,11 +89,12 @@ for epoch in tqdm(range(nb_epochs)):
             h = torch.zeros((X.size(1), DIM_LATENT)).to(device)
             loss = 0
             for t in range(X.size(0) - pas_temps):
+                ht = h
                 h = state.model.one_step(X[t], h)
-                for p in range(1,pas_temps+1):
-                    ht = state.model.one_step(X[t+p], h)
+                for p in range(0,pas_temps+1):
+                    ht = state.model.one_step(X[t+p], ht)
                 y_pred = state.model.decode(ht)
-                y_true = y[t+p]
+                y_true = y[t+pas_temps]
                 loss += f_cout(y_pred, y_true)
             writer.add_scalar("Loss/test", loss, epoch)
         print("epoch : ", epoch, "loss_test: ", loss)
