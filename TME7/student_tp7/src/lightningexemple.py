@@ -8,10 +8,11 @@ from datamaestro import prepare_dataset
 import time
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.utils.tensorboard import SummaryWriter
 
 BATCH_SIZE = 311
 TRAIN_RATIO = 0.8
-LOG_PATH = "/tmp/runs/lightning_logs"
+LOG_PATH = "./lightning_logs/test"
 
 
 class Lit2Layer(pl.LightningModule):
