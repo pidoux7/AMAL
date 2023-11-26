@@ -60,10 +60,11 @@ class TrumpDataset(Dataset):
 ###################################################################################################
 #                                          Apprentissage                                          #
 ###################################################################################################
-
+# On crée un dossier pour stocker les résultats
 writer = SummaryWriter("trump/"+datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-
+# Chemin vers les données
 PATH = '/home/pidoux/master/deepdac/AMAL/TME4/data/'
+# On vérifie si on peut utiliser le GPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #Taille du batch
@@ -80,7 +81,9 @@ DIM_INPUT_FIRST = len(id2lettre)
 DIM_INPUT = 80
 DIM_LATENT = 40
 DIM_OUTPUT = DIM_INPUT_FIRST
+
 nb_epochs = 5
+
 lr = 0.01
 f_cout = nn.CrossEntropyLoss()
 accuracy_train = torchmetrics.classification.Accuracy(task="multiclass", num_classes=DIM_INPUT_FIRST).to(device)
@@ -140,3 +143,9 @@ for epoch in tqdm(range(nb_epochs)):
     with savepath.open("wb") as fp:
         state.epoch += 1
         torch.save(state, fp)
+
+
+###################################################################################################
+
+
+

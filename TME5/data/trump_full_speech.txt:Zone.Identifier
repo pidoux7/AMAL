@@ -1,0 +1,17 @@
+from lime.lime_tabular import LimeTabularExplainer
+
+explainer = LimeTabularExplainer(x_test,
+    feature_names=feature_names,
+    class_names=target_names,
+    categorical_features=[],
+    mode='classification')
+
+
+exp = explainer.explain_instance(x_test[0], lr.predict_proba, num_features=10)
+exp.as_pyplot_figure()
+plt.tight_layout()
+
+exp = explainer.explain_instance(x_test[0], lr.predict_proba, num_features=10)
+print(exp.as_list())
+exp.as_pyplot_figure()
+plt.tight_layout()
