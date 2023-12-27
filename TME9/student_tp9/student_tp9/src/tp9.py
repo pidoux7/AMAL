@@ -239,6 +239,7 @@ class model_5(nn.Module):
         att = torch.matmul(x, qtm.transpose(1, 2))  # shape: [batch_size, seq_len, 1]
         att = nn.functional.softmax(att, dim=1)   # shape: [batch_size, seq_len, 1]
         att_entropy = -torch.sum(att * torch.log(att + 1e-9), dim=1)  # Add a small value to avoid log(0)
+        att = att/att_entropy.view(batch_size,1,1)
 
         
         # Apply attention weights
@@ -248,7 +249,7 @@ class model_5(nn.Module):
         
         #MLP
         x = self.model(x) # shape: [batch_size, output_size]
-        return x,att_entropy
+        return x
 
 #########################################################################################################
 ############################################# training #################################################
@@ -285,7 +286,7 @@ def training(model, train_loader, val_loader, criterion, optimizer, epochs):
         model.eval()
         total_loss = 0
         total_acc = 0
-        cpt =0
+        cpt = 0
         with torch.no_grad():
             for X,y in val_loader:
                 X = X.to(device)
@@ -411,73 +412,6 @@ training(mlp4,train_dataset,test_dataset,critere,optim,10)
 #########################################################################################################
 ######################################## main exercice 5 #####################################################
 #########################################################################################################
-def training_entropy(model, train_loader, val_loader, criterion, optimizer, epochs,lambda_entropy=0.01):
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        total_acc = 0
-        entropy_losses = 0
-        total_losses = 0
-        cpt = 0
-        for X,y in train_loader:
-            X = X.to(device)
-            y = y.float().to(device)
-            X_emb = emb(X)
-            y_pred, att_entropy  = model(X_emb)
-            loss = criterion(y_pred.view(-1), y)
-            entropy_loss = lambda_entropy * att_entropy.mean()
-            losses = loss / entropy_loss
-            total_loss += loss.item()
-            entropy_losses += entropy_loss.item()
-            total_losses += losses.item()
-            acc_train(y_pred.view(-1),y)
-            total_acc += acc_val(y_pred.view(-1),y)
-            cpt+=1
-
-
-            losses.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-
-        writer.add_scalar("Loss/train", total_loss, epoch)
-        writer.add_scalar("Loss/entropy_train", entropy_losses, epoch)
-        writer.add_scalar("Loss/total_train", total_losses, epoch)
-        writer.add_scalar("Accuracy/train", total_acc/cpt, epoch)
-        
-        print(f"\n Epoch {epoch + 1}/{epochs} :")
-        print(f'loss_train = {total_loss:.4f}')
-        print(f'entropy_loss = {entropy_losses:.4f}')
-        print(f'total_loss = {total_losses:.4f}')
-        print(f'acc_train = {total_acc/cpt:.4f}')
-
-        model.eval()
-        total_loss = 0
-        total_acc = 0
-        cpt =0
-        with torch.no_grad():
-            for X,y in val_loader:
-                X = X.to(device)
-                y = y.float().to(device)
-                X_emb = emb(X)
-                y_pred,att_entropy = model(X_emb)
-                loss = criterion(y_pred.view(-1), y)
-                entropy_loss = lambda_entropy * att_entropy.mean()
-                losses = loss / entropy_loss
-                total_loss += loss.item()
-                entropy_losses += entropy_loss.item()
-                total_losses += losses.item()
-                total_acc += acc_val(y_pred.view(-1),y)
-                cpt+=1
-
-        writer.add_scalar("Loss/val", total_loss, epoch)
-        writer.add_scalar("Accuracy/val", total_acc/cpt, epoch)
-        writer.add_scalar("Loss/entropy_val", entropy_losses, epoch)
-        writer.add_scalar("Loss/total_val", total_losses, epoch)
-        print(f"Epoch {epoch + 1}/{epochs} :")
-        print(f'loss_test = {total_loss:.4f}')
-        print(f'acc_test = {total_acc/cpt:.4f}')
-
-
 
 
 
@@ -499,4 +433,4 @@ writer = SummaryWriter()
 acc_train = BinaryAccuracy().to(device)
 acc_val = BinaryAccuracy().to(device)
 
-training_entropy(mlp5,train_dataset,test_dataset,critere,optim,10)
+training(mlp5,train_dataset,test_dataset,critere,optim,10)
