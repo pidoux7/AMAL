@@ -127,8 +127,8 @@ class model_2(nn.Module):
 
     def forward(self, x):
         batch_size, seq_len, input_size = x.shape
-        att = nn.functional.softmax(torch.matmul(x,self.q),dim=1)
-        x = att.view(batch_size,seq_len,1)*x
+        att = nn.functional.softmax(torch.matmul(x,self.q),dim=1) #[batch_size, seq_len, 1]
+        x = att.view(batch_size,seq_len,1)*x #[batch_size, seq_len, input_size]
         x = x.sum(dim=1)
         x = self.model(x)
         return x
@@ -136,38 +136,120 @@ class model_2(nn.Module):
 
 #########################################################################################################
     
-class AttentionModel(nn.Module):
-    def __init__(self, input_size, embed_size, query_dim, output_dim):
-        super(AttentionModel, self).__init__()
-        # Initialize query vector q as a parameter
-        self.query = nn.Parameter(torch.randn(query_dim))
-        # Linear layer to use in attention for computing attention scores
-        self.attention_linear = nn.Linear(embed_size, 1)
-        # Multi-layer perceptron (MLP) for the final classification
-        self.mlp = nn.Sequential(
-            nn.Linear(embed_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, output_dim)
+class model_3(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size),  # Input layer to hidden layer
+            nn.ReLU(),  # Activation function (ReLU)
+            nn.Linear(hidden_size, hidden_size),  # Hidden layer to output layer
+            nn.ReLU(),  # Activation function (ReLU)
+            nn.Linear(hidden_size, hidden_size),  # Hidden layer to output layer
+            nn.ReLU(),  # Activation function (ReLU)
+            nn.Linear(hidden_size, output_size), # Hidden layer to output layer
+            nn.Sigmoid() # Hidden layer to output layer
         )
 
+        self.q = nn.Linear(input_size, input_size)
+        self.v = nn.Linear(input_size, input_size)
+
     def forward(self, x):
+        batch_size, seq_len, input_size = x.shape
+        tm = x.mean(dim=1)  # shape: [batch_size, input_size]
+        qtm = self.q(tm)    # shape: [batch_size, input_size]
+        qtm = qtm.unsqueeze(1)  # shape: [batch_size, 1, input_size]
+        
+        # Compute attention weights
+        att = torch.matmul(x, qtm.transpose(1, 2))  # shape: [batch_size, seq_len, 1]
+        att = nn.functional.softmax(att, dim=1)   # shape: [batch_size, seq_len, 1]
+        
+        # Apply attention weights
+        x = self.v(x)  # shape: [batch_size, seq_len, input_size]
+        x = x * att  # shape: [batch_size, seq_len, input_size]
+        x = x.sum(dim=1)  # shape: [batch_size, input_size]
+        
+        #MLP
+        x = self.model(x) # shape: [batch_size, output_size]
+        return x
+    
+#########################################################################################################
+
+class model_4(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size),  # Input layer to hidden layer
+            nn.ReLU(),  # Activation function (ReLU)
+            nn.Linear(hidden_size, output_size), # Hidden layer to output layer
+            nn.Sigmoid() # Hidden layer to output layer
+        )
+
+        self.q = nn.Linear(input_size, input_size)
+        self.v = nn.Linear(input_size, input_size)
+        self.gru = nn.GRU(input_size, input_size, batch_first=True)
+
+
+    def forward(self, x):
+        batch_size, seq_len, input_size = x.shape
+        x, h = self.gru(x)
+
+        tm = x.mean(dim=1)  # shape: [batch_size, input_size]
+        qtm = self.q(tm)    # shape: [batch_size, input_size]
+        qtm = qtm.unsqueeze(1)  # shape: [batch_size, 1, input_size]
+        
+        # Compute attention weights
+        att = torch.matmul(x, qtm.transpose(1, 2))  # shape: [batch_size, seq_len, 1]
+        att = nn.functional.softmax(att, dim=1)   # shape: [batch_size, seq_len, 1]
+        
+        # Apply attention weights
+        x = self.v(x)  # shape: [batch_size, seq_len, input_size]
+        x = x * att  # shape: [batch_size, seq_len, input_size]
+        x = x.sum(dim=1)  # shape: [batch_size, input_size]
+        
+        #MLP
+        x = self.model(x) # shape: [batch_size, output_size]
+        return x
+
+#########################################################################################################
+
+class model_5(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_size, hidden_size),  # Input layer to hidden layer
+            nn.ReLU(),  # Activation function (ReLU)
+            nn.Linear(hidden_size, output_size), # Hidden layer to output layer
+            nn.Sigmoid() # Hidden layer to output layer
+        )
+
+        self.q = nn.Linear(input_size, input_size)
+        self.v = nn.Linear(input_size, input_size)
+        self.gru = nn.GRU(input_size, input_size, batch_first=True)
+
+
+    def forward(self, x):
+        batch_size, seq_len, input_size = x.shape
+        x, h = self.gru(x)
+
+        tm = x.mean(dim=1)  # shape: [batch_size, input_size]
+        qtm = self.q(tm)    # shape: [batch_size, input_size]
+        qtm = qtm.unsqueeze(1)  # shape: [batch_size, 1, input_size]
+        
+        # Compute attention weights
+        att = torch.matmul(x, qtm.transpose(1, 2))  # shape: [batch_size, seq_len, 1]
+        att = nn.functional.softmax(att, dim=1)   # shape: [batch_size, seq_len, 1]
+        att_entropy = -torch.sum(att * torch.log(att + 1e-9), dim=1)  # Add a small value to avoid log(0)
 
         
-        # Compute attention scores using a small neural network
-        # which takes the dot product between the query and the embeddings
-        attention_scores = torch.matmul(input_size, self.query)  # shape (batch_size, seq_length)
-        attention_scores = self.attention_linear(attention_scores.unsqueeze(-1)).squeeze(-1)
+        # Apply attention weights
+        x = self.v(x)  # shape: [batch_size, seq_len, input_size]
+        x = x * att  # shape: [batch_size, seq_len, input_size]
+        x = x.sum(dim=1)  # shape: [batch_size, input_size]
         
-        # Apply softmax to get attention distribution
-        alpha = F.softmax(attention_scores, dim=1)  # shape (batch_size, seq_length)
-        
-        # Compute the weighted sum of embeddings
-        attention_output = torch.sum(alpha.unsqueeze(-1) * x, dim=1)  # shape (batch_size, embed_size)
-        
-        # Final classification
-        y_pred = self.mlp(attention_output)  # shape (batch_size, output_dim)
-        
-        return y_pred
+        #MLP
+        x = self.model(x) # shape: [batch_size, output_size]
+        return x,att_entropy
+
 #########################################################################################################
 ############################################# training #################################################
 #########################################################################################################
@@ -260,6 +342,7 @@ acc_val = BinaryAccuracy().to(device)
 #########################################################################################################
 ######################################## main exercice 2 #####################################################
 #########################################################################################################
+'''
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 input_size = 50
@@ -277,3 +360,143 @@ acc_train = BinaryAccuracy().to(device)
 acc_val = BinaryAccuracy().to(device)
 
 training(mlp2,train_dataset,test_dataset,critere,optim,10)
+'''
+
+#########################################################################################################
+######################################## main exercice 3 #####################################################
+#########################################################################################################
+'''
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+input_size = 50
+hidden_size = 50
+output_size = 1
+lr = 0.001
+
+emb = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings)).to(device).requires_grad_(False)
+mlp3 = model_3(input_size, hidden_size, output_size).to(device)
+critere = nn.BCELoss()
+optim = torch.optim.Adam(mlp3.parameters(), lr=lr)
+
+writer = SummaryWriter()
+acc_train = BinaryAccuracy().to(device)
+acc_val = BinaryAccuracy().to(device)
+
+training(mlp3,train_dataset,test_dataset,critere,optim,10)
+'''
+
+#########################################################################################################
+######################################## main exercice 4 #####################################################
+#########################################################################################################
+'''
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+input_size = 50
+hidden_size = 50
+output_size = 1
+lr = 0.001
+
+emb = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings)).to(device).requires_grad_(False)
+mlp4 = model_4(input_size, hidden_size, output_size).to(device)
+critere = nn.BCELoss()
+optim = torch.optim.Adam(mlp4.parameters(), lr=lr)
+
+writer = SummaryWriter()
+acc_train = BinaryAccuracy().to(device)
+acc_val = BinaryAccuracy().to(device)
+
+training(mlp4,train_dataset,test_dataset,critere,optim,10)
+'''
+
+#########################################################################################################
+######################################## main exercice 5 #####################################################
+#########################################################################################################
+def training_entropy(model, train_loader, val_loader, criterion, optimizer, epochs,lambda_entropy=0.01):
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        total_acc = 0
+        entropy_losses = 0
+        total_losses = 0
+        cpt = 0
+        for X,y in train_loader:
+            X = X.to(device)
+            y = y.float().to(device)
+            X_emb = emb(X)
+            y_pred, att_entropy  = model(X_emb)
+            loss = criterion(y_pred.view(-1), y)
+            entropy_loss = lambda_entropy * att_entropy.mean()
+            losses = loss / entropy_loss
+            total_loss += loss.item()
+            entropy_losses += entropy_loss.item()
+            total_losses += losses.item()
+            acc_train(y_pred.view(-1),y)
+            total_acc += acc_val(y_pred.view(-1),y)
+            cpt+=1
+
+
+            losses.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        writer.add_scalar("Loss/train", total_loss, epoch)
+        writer.add_scalar("Loss/entropy_train", entropy_losses, epoch)
+        writer.add_scalar("Loss/total_train", total_losses, epoch)
+        writer.add_scalar("Accuracy/train", total_acc/cpt, epoch)
+        
+        print(f"\n Epoch {epoch + 1}/{epochs} :")
+        print(f'loss_train = {total_loss:.4f}')
+        print(f'entropy_loss = {entropy_losses:.4f}')
+        print(f'total_loss = {total_losses:.4f}')
+        print(f'acc_train = {total_acc/cpt:.4f}')
+
+        model.eval()
+        total_loss = 0
+        total_acc = 0
+        cpt =0
+        with torch.no_grad():
+            for X,y in val_loader:
+                X = X.to(device)
+                y = y.float().to(device)
+                X_emb = emb(X)
+                y_pred,att_entropy = model(X_emb)
+                loss = criterion(y_pred.view(-1), y)
+                entropy_loss = lambda_entropy * att_entropy.mean()
+                losses = loss / entropy_loss
+                total_loss += loss.item()
+                entropy_losses += entropy_loss.item()
+                total_losses += losses.item()
+                total_acc += acc_val(y_pred.view(-1),y)
+                cpt+=1
+
+        writer.add_scalar("Loss/val", total_loss, epoch)
+        writer.add_scalar("Accuracy/val", total_acc/cpt, epoch)
+        writer.add_scalar("Loss/entropy_val", entropy_losses, epoch)
+        writer.add_scalar("Loss/total_val", total_losses, epoch)
+        print(f"Epoch {epoch + 1}/{epochs} :")
+        print(f'loss_test = {total_loss:.4f}')
+        print(f'acc_test = {total_acc/cpt:.4f}')
+
+
+
+
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+input_size = 50
+hidden_size = 50
+output_size = 1
+lr = 0.001
+lambda_entropy = 0.01
+
+emb = torch.nn.Embedding.from_pretrained(torch.FloatTensor(embeddings)).to(device).requires_grad_(False)
+mlp5 = model_5(input_size, hidden_size, output_size).to(device)
+critere = nn.BCELoss()
+optim = torch.optim.Adam(mlp5.parameters(), lr=lr)
+
+writer = SummaryWriter()
+acc_train = BinaryAccuracy().to(device)
+acc_val = BinaryAccuracy().to(device)
+
+training_entropy(mlp5,train_dataset,test_dataset,critere,optim,10)
