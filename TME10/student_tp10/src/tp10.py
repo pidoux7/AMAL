@@ -1,3 +1,7 @@
+#########################################################################################################
+############################################# imports ###################################################
+#########################################################################################################
+
 import math
 import click
 from torch.utils.tensorboard import SummaryWriter
@@ -14,8 +18,11 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from torchmetrics.classification import BinaryAccuracy
+from utils import *
 
-
+#########################################################################################################
+############################################# preprocessing #############################################
+#########################################################################################################
 
 MAX_LENGTH = 500
 
@@ -75,7 +82,11 @@ def get_imdb_data(embedding_size=50):
 
     return word2id, embeddings, FolderText(ds.train.classes, ds.train.path, tokenizer, load=False), FolderText(ds.test.classes, ds.test.path, tokenizer, load=False)
 
+#########################################################################################################
+############################################# models ####################################################
+#########################################################################################################
 
+############################################# model 1 ####################################################
 
 class Self_attention(nn.Module):
     def __init__(self, embed_dim, c=0):
@@ -126,7 +137,6 @@ class Self_attention(nn.Module):
         x = self.lin( attention @ v )
         #print('att.shape',x.shape)
         x = self.relu(x)
-        
 
         return x
 
@@ -157,9 +167,69 @@ class Model_attention(nn.Module):
 
         return x
 
+############################################# model 2 ####################################################
+class Self_attention2(nn.Module):
+    def __init__(self, embed_dim, c=0):
+        super().__init__()
+        self.lin_k = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.lin_q = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.lin_v = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.soft = nn.Softmax(dim=1)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.lin = nn.Linear(embed_dim, embed_dim)
+        self.lin2 = nn.Linear(embed_dim, embed_dim)
+        self.c = torch.tensor(c).requires_grad_(False)
+        self.relu = nn.ReLU()
+        self._embed_dim = torch.tensor(embed_dim).requires_grad_(False)
+    
+    def softmax_masque(self, x, l):
+        mask = torch.arange(x.size(1))[None, :].to("cuda") >= l[:, None].to("cuda")
+        mask = mask.unsqueeze(2).expand(x.size())
+        x[mask] = float('-inf')
+        return self.soft(x)
+    
+    def forward(self, x, l):
+        x = self.norm(x)
+        q = self.lin_q(x)
+        k = self.lin_k(x)
+        v = self.lin_v(x)
+        attention = self.softmax_masque(self.c + torch.div(q @ torch.transpose(k, dim0=1, dim1=2), torch.sqrt(self._embed_dim)),l)
+        attention = self.lin( attention @ v )
+        attention = self.relu(x)
+        x = self.lin2(attention + x)
+        return x
+
+
+class Model_attention2(nn.Module):
+    def __init__(self, embed_dim, c=0):
+        super().__init__()
+        self.Att1 = Self_attention2(embed_dim, c)
+        self.Att2 = Self_attention2(embed_dim, c)
+        self.Att3 = Self_attention2(embed_dim, c)
+        self.lin = nn.Linear(embed_dim, 1)
+        self.sigmoid = nn.Sigmoid()
+        self._embed_dim = embed_dim
+        self.c = c        
+
+    def forward(self, x, l):
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        x = torch.mean(x, dim=1)
+        x = self.lin(x)
+        x = self.sigmoid(x)
+
+        return x
+
+
+
+#########################################################################################################
+############################################# training #################################################
+#########################################################################################################
+
 def train(model, train_loader, test_loader, optimizer, criterion, epochs, device, writer, acc_train, acc_test):
     for epoch in tqdm(range(epochs)):
-        print(f"\n Epoch {epoch + 1}/{epochs} :")
+        print(f"\n\n\n Epoch {epoch + 1}/{epochs} :")
         model.train()
         total_loss = 0
         total_acc = 0
@@ -198,7 +268,9 @@ def train(model, train_loader, test_loader, optimizer, criterion, epochs, device
 
 
 
-
+#########################################################################################################
+######################################## main exercice #####################################################
+#########################################################################################################
 
 @click.command()
 @click.option('--test-iterations', default=1000, type=int, help='Number of training iterations (batches) before testing')
@@ -233,7 +305,7 @@ def main(epochs, test_iterations, modeltype, emb_size, batch_size):
     if modeltype == 1:
         model = Model_attention(emb_size, c).to(device)
     elif modeltype == 2:
-        pass
+        model = Model_attention2(emb_size, c).to(device)
     criterion = nn.BCELoss(reduction='mean')
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     writer = SummaryWriter()
