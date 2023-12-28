@@ -189,10 +189,10 @@ class Self_attention2(nn.Module):
         return self.soft(x)
     
     def forward(self, x, l):
-        x = self.norm(x)
-        q = self.lin_q(x)
-        k = self.lin_k(x)
-        v = self.lin_v(x)
+        xtilde = self.norm(x)
+        q = self.lin_q(xtilde)
+        k = self.lin_k(xtilde)
+        v = self.lin_v(xtilde)
         attention = self.softmax_masque(self.c + torch.div(q @ torch.transpose(k, dim0=1, dim1=2), torch.sqrt(self._embed_dim)),l)
         attention = self.lin( attention @ v )
         attention = self.relu(x)
@@ -221,7 +221,127 @@ class Model_attention2(nn.Module):
 
         return x
 
+################################################Positionnal encodding ################################################
 
+class Model_attention3(Model_attention):
+    def __init__(self, embed_dim, c=0):
+        super().__init__(embed_dim, c)
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH)      
+
+    def forward(self, x, l):
+        x = self.pe(x)
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        x = torch.mean(x, dim=1)
+        x = self.lin(x)
+        x = self.sigmoid(x)
+
+        return x
+
+class Model_attention4(Model_attention2):
+    def __init__(self, embed_dim, c=0):
+        super().__init__(embed_dim, c)
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH)      
+
+    def forward(self, x, l):
+        x = self.pe(x)
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        x = torch.mean(x, dim=1)
+        x = self.lin(x)
+        x = self.sigmoid(x)
+
+        return x
+    
+
+########################################## token cls #########################################################
+class Model_attention5(Model_attention):
+    def __init__(self, embed_dim, c=0):
+        super().__init__(embed_dim, c) 
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1)          
+        self.lin = nn.Linear(embed_dim, 1)
+        self.cls = torch.randn(embed_dim).requires_grad_(True).to("cuda")
+        self.relu = nn.ReLU()
+
+    def forward(self, x, l):
+        batch_size, seq_len, emb_size = x.shape
+        x = torch.cat((self.cls.reshape(1,1,emb_size).expand(batch_size,1,emb_size),x),dim=1)
+        x = self.pe(x)
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        x = self.lin(x[:,0,:])
+        x = self.sigmoid(x)
+
+        return x
+
+class Model_attention6(Model_attention2):
+    def __init__(self, embed_dim, c=0):
+        super().__init__(embed_dim, c)     
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1)          
+        self.lin = nn.Linear(embed_dim, 1)
+        self.cls = torch.randn(embed_dim).requires_grad_(True).to("cuda")
+        self.relu = nn.ReLU()
+
+    def forward(self, x, l):
+        batch_size, seq_len, emb_size = x.shape
+        x = torch.cat((self.cls.reshape(1,1,emb_size).expand(batch_size,1,emb_size),x),dim=1)
+        x = self.pe(x)
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        x = self.lin(x[:,0,:])
+        x = self.sigmoid(x)
+
+        return x
+    
+########################################## multicouche #########################################################
+    
+class Model_attention7(Model_attention):
+    def __init__(self, embed_dim, num_attention_layers, c=0):
+        super().__init__(embed_dim, c) 
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1) 
+        self.g = nn.Linear(embed_dim, embed_dim)         
+        self.lin = nn.Linear(embed_dim, 1)
+        self.cls = torch.randn(embed_dim).requires_grad_(True).to("cuda")
+        self.relu = nn.ReLU()
+        self.num_attention_layers = num_attention_layers
+        self.Att = nn.ModuleList([Self_attention(embed_dim, c) for i in range(num_attention_layers)])
+
+    def forward(self, x, l):
+        batch_size, seq_len, emb_size = x.shape
+        x = torch.cat((self.cls.reshape(1,1,emb_size).expand(batch_size,1,emb_size),x),dim=1)
+        x = self.pe(x)
+        for i in range(self.num_attention_layers):
+            x = self.Att[i](x, l)
+        x = self.lin(x[:,0,:])
+        x = self.sigmoid(x)
+
+        return x
+
+class Model_attention8(Model_attention2):
+    def __init__(self, embed_dim, num_attention_layers, c=0):
+        super().__init__(embed_dim, c) 
+        self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1) 
+        self.g = nn.Linear(embed_dim, embed_dim)         
+        self.lin = nn.Linear(embed_dim, 1)
+        self.cls = torch.randn(embed_dim).requires_grad_(True).to("cuda")
+        self.relu = nn.ReLU()
+        self.num_attention_layers = num_attention_layers
+        self.Att = nn.ModuleList([Self_attention2(embed_dim, c) for i in range(num_attention_layers)])
+
+    def forward(self, x, l):
+        batch_size, seq_len, emb_size = x.shape
+        x = torch.cat((self.cls.reshape(1,1,emb_size).expand(batch_size,1,emb_size),x),dim=1)
+        x = self.pe(x)
+        for i in range(self.num_attention_layers):
+            x = self.Att[i](x, l)
+        x = self.lin(x[:,0,:])
+        x = self.sigmoid(x)
+
+        return x
 
 #########################################################################################################
 ############################################# training #################################################
@@ -275,12 +395,13 @@ def train(model, train_loader, test_loader, optimizer, criterion, epochs, device
 @click.command()
 @click.option('--test-iterations', default=1000, type=int, help='Number of training iterations (batches) before testing')
 @click.option('--epochs', default=50, help='Number of epochs.')
-@click.option('--modeltype', required=True, type=int, help="0: base, 1 : Attention1, 2: Attention2")
+@click.option('--modeltype', required=True, type=int, help="1 - 8")
 @click.option('--emb_size', default=100, help='embeddings size')
 @click.option('--batch_size', default=20, help='batch size')
+@click.option('--num_attention_layers', default=3, type=int, help='number of attention layers')
 
 
-def main(epochs, test_iterations, modeltype, emb_size, batch_size):
+def main(epochs, test_iterations, modeltype, emb_size, batch_size, num_attention_layers):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
     word2id, embeddings, train_data, test_data = get_imdb_data(emb_size)
@@ -302,10 +423,20 @@ def main(epochs, test_iterations, modeltype, emb_size, batch_size):
     
     # hyperparametres
     c = 0
-    if modeltype == 1:
+    if modeltype == 1: # base
         model = Model_attention(emb_size, c).to(device)
-    elif modeltype == 2:
+    elif modeltype == 2: # base + layer norm + residual
         model = Model_attention2(emb_size, c).to(device)
+    elif modeltype == 3: # base + positionnal encodding
+        model = Model_attention3(emb_size, c).to(device)
+    elif modeltype == 4: # base + layer norm + residual + positionnal encodding
+        model = Model_attention4(emb_size, c).to(device)
+    elif modeltype == 5: # base + + positionnal encodding + token cls
+        model = Model_attention5(emb_size, c).to(device)
+    elif modeltype == 6: # base + layer norm + residual + token cls
+        model = Model_attention6(emb_size, c).to(device)
+    elif modeltype == 7: # base + token cls + multicouche
+        model = Model_attention7(emb_size, num_attention_layers, c).to(device)
     criterion = nn.BCELoss(reduction='mean')
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     writer = SummaryWriter()
