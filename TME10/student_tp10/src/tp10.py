@@ -301,7 +301,7 @@ class Model_attention6(Model_attention2):
     
 class Model_attention7(Model_attention):
     def __init__(self, embed_dim, num_attention_layers, c=0):
-        super().__init__(embed_dim, c) 
+        super().__init__() 
         self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1) 
         self.g = nn.Linear(embed_dim, embed_dim)         
         self.lin = nn.Linear(embed_dim, 1)
@@ -309,6 +309,9 @@ class Model_attention7(Model_attention):
         self.relu = nn.ReLU()
         self.num_attention_layers = num_attention_layers
         self.Att = nn.ModuleList([Self_attention(embed_dim, c) for i in range(num_attention_layers)])
+        self.sigmoid = nn.Sigmoid()
+        self._embed_dim = embed_dim
+        self.c = c 
 
     def forward(self, x, l):
         batch_size, seq_len, emb_size = x.shape
@@ -321,9 +324,9 @@ class Model_attention7(Model_attention):
 
         return x
 
-class Model_attention8(Model_attention2):
+class Model_attention8(nn.Module):
     def __init__(self, embed_dim, num_attention_layers, c=0):
-        super().__init__(embed_dim, c) 
+        super().__init__() 
         self.pe = PositionalEncoding(embed_dim, MAX_LENGTH+1) 
         self.g = nn.Linear(embed_dim, embed_dim)         
         self.lin = nn.Linear(embed_dim, 1)
@@ -331,6 +334,9 @@ class Model_attention8(Model_attention2):
         self.relu = nn.ReLU()
         self.num_attention_layers = num_attention_layers
         self.Att = nn.ModuleList([Self_attention2(embed_dim, c) for i in range(num_attention_layers)])
+        self.sigmoid = nn.Sigmoid()
+        self._embed_dim = embed_dim
+        self.c = c 
 
     def forward(self, x, l):
         batch_size, seq_len, emb_size = x.shape
@@ -437,6 +443,8 @@ def main(epochs, test_iterations, modeltype, emb_size, batch_size, num_attention
         model = Model_attention6(emb_size, c).to(device)
     elif modeltype == 7: # base + token cls + multicouche
         model = Model_attention7(emb_size, num_attention_layers, c).to(device)
+    elif modeltype == 8: # base + layer norm + residual + token cls + multicouche
+        model = Model_attention8(emb_size, num_attention_layers, c).to(device)
     criterion = nn.BCELoss(reduction='mean')
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     writer = SummaryWriter()
