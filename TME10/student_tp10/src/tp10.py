@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
+from torchmetrics.classification import BinaryAccuracy
 
 
 
@@ -73,28 +75,35 @@ def get_imdb_data(embedding_size=50):
 
     return word2id, embeddings, FolderText(ds.train.classes, ds.train.path, tokenizer, load=False), FolderText(ds.test.classes, ds.test.path, tokenizer, load=False)
 
-#  TODO: 
+
 
 class Self_attention(nn.Module):
     def __init__(self, embed_dim, c=0):
-        super(Self_attention, self).__init__()
+        super().__init__()
         self.lin_k = nn.Linear(embed_dim, embed_dim, bias=False)
         self.lin_q = nn.Linear(embed_dim, embed_dim, bias=False)
         self.lin_v = nn.Linear(embed_dim, embed_dim, bias=False)
         self.soft = nn.Softmax(dim=1)
-        self.lin_final = nn.Linear(embed_dim, embed_dim)
-        self.c = c
-
-
+        self.lin = nn.Linear(embed_dim, embed_dim)
+        self.c = torch.tensor(c).requires_grad_(False)
+        self.relu = nn.ReLU()
+        self._embed_dim = torch.tensor(embed_dim).requires_grad_(False)
+    
     def softmax_masque(self, x, l):
         # faire un masque qui ne prenne pas en compte les tokens de padding
         # x: (batch_size, seq_len, emb_size)
         # l: (batch_size)
-        mask = torch.arange(x.size(1))[None, :] >= l[:, None] #> ou >= ???????????
+        #print('x.shape',x.shape)
+        #print('l.shape',l.shape)
+        #print(l.device)
+        #print(x.device)
+        mask = torch.arange(x.size(1))[None, :].to("cuda") >= l[:, None].to("cuda") #> ou >= ???????????
+        #print('mask.shape',mask.shape)
+        #print(mask.device)
         mask = mask.unsqueeze(2).expand(x.size())
         x[mask] = float('-inf')
 
-        return self.softmax(x)
+        return self.soft(x)
 
     def forward(self, x, l):
         # x: (batch_size, seq_len_false, emb_size)
@@ -103,31 +112,89 @@ class Self_attention(nn.Module):
         q = self.lin_q(x)
         k = self.lin_k(x)
         v = self.lin_v(x)
+        #print('x_lin.shape',x.shape)
+        #print('q.shape',q.shape)
+        #print('k.shape',k.shape)
+        #print('v.shape',v.shape)
 
         # quand on appelle le soft-mmax il faut utiliser un mask afin d'appliquer
         # le softmax jusqu'a la fin de la phrase mais pas au dela (on ne prend pas
         # en compte les tokens de padding) 
-        attention = self.softmax_masque(self.c + torch.div(q @ torch.transpose(k, dim0=1, dim1=2), torch.sqrt(self._embed_dim)))
-        x = self.lin_final( attention @ v )
+        attention = self.softmax_masque(self.c + torch.div(q @ torch.transpose(k, dim0=1, dim1=2), torch.sqrt(self._embed_dim)),l)
+        #print('attention.shape',attention.shape)
+        
+        x = self.lin( attention @ v )
+        #print('att.shape',x.shape)
+        x = self.relu(x)
+        
 
         return x
 
 
 class Model_attention(nn.Module):
     def __init__(self, embed_dim, c=0):
-        super(Model_attention, self).__init__()
+        super().__init__()
         self.Att1 = Self_attention(embed_dim, c)
         self.Att2 = Self_attention(embed_dim, c)
+
         self.Att3 = Self_attention(embed_dim, c)
-        self.lin = nn.Linear(embed_dim, 2)
+        self.lin = nn.Linear(embed_dim, 1)
         self.sigmoid = nn.Sigmoid()
-        self.TransformerEncoder = nn.Sequential(self.Att1, self.Att2, self.Att3, self.lin, self.sigmoid)
-        
+        self._embed_dim = embed_dim
+        self.c = c        
 
     def forward(self, x, l):
-        x = self.TransformerEncoder(x, l)
+        #print('x_entrée.shape',x.shape)
+        x = self.Att1(x, l)
+        x = self.Att2(x, l)
+        x = self.Att3(x, l)
+        #print('x_sortie.shape',x.shape)
+        x = torch.mean(x, dim=1)
+        x = self.lin(x)
+        #print('x_lin_sortie.shape',x.shape)
+        x = self.sigmoid(x)
+        #print('x_sigmoid_sortie.shape',x.shape)
+
         return x
 
+def train(model, train_loader, test_loader, optimizer, criterion, epochs, device, writer, acc_train, acc_test):
+    for epoch in tqdm(range(epochs)):
+        print(f"\n Epoch {epoch + 1}/{epochs} :")
+        model.train()
+        total_loss = 0
+        total_acc = 0
+        cpt = 0
+        for x,y,l in tqdm(train_loader):
+            x,y,l = x.to(device), y.float().to(device), l.to(device)
+            optimizer.zero_grad()
+            y_pred = model.forward(x,l).to(device)
+            loss = criterion(y_pred.squeeze(), y)
+            total_loss += loss.item()
+            total_acc += acc_train(y_pred.squeeze(),y)
+            cpt += 1
+            loss.backward()
+            optimizer.step()
+        writer.add_scalar("Loss/train", total_loss, epoch)
+        writer.add_scalar("Accuracy/train", total_acc/cpt, epoch)
+        print(f'loss_train = {total_loss:.4f}')
+        print(f'acc_train = {total_acc/cpt:.4f}')
+
+        model.eval()
+        total_loss = 0
+        total_acc = 0
+        cpt = 0
+        with torch.no_grad():
+            for x,y,l in tqdm(test_loader):
+                x,y,l = x.to(device), y.float().to(device), l.to(device)
+                y_pred = model(x,l)
+                loss = criterion(y_pred.squeeze(), y)
+                total_loss += loss.item()
+                total_acc += acc_test(y_pred.squeeze(),y)
+                cpt += 1
+            writer.add_scalar("Loss/test", total_loss, epoch)
+            writer.add_scalar("Accuracy/test", total_acc/cpt, epoch)
+            print(f'loss_test = {total_loss:.4f}')
+            print(f'acc_test = {total_acc/cpt:.4f}')
 
 
 
@@ -137,10 +204,13 @@ class Model_attention(nn.Module):
 @click.option('--test-iterations', default=1000, type=int, help='Number of training iterations (batches) before testing')
 @click.option('--epochs', default=50, help='Number of epochs.')
 @click.option('--modeltype', required=True, type=int, help="0: base, 1 : Attention1, 2: Attention2")
-@click.option('--emb-size', default=100, help='embeddings size')
-@click.option('--batch-size', default=20, help='batch size')
-def main(epochs,test_iterations,modeltype,emb_size,batch_size):
+@click.option('--emb_size', default=100, help='embeddings size')
+@click.option('--batch_size', default=20, help='batch size')
+
+
+def main(epochs, test_iterations, modeltype, emb_size, batch_size):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     word2id, embeddings, train_data, test_data = get_imdb_data(emb_size)
     id2word = dict((v, k) for k, v in word2id.items())
     PAD = word2id["__OOV__"]
@@ -157,39 +227,20 @@ def main(epochs,test_iterations,modeltype,emb_size,batch_size):
 
     train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size, collate_fn=collate)
     test_loader = DataLoader(test_data, batch_size=batch_size,collate_fn=collate,shuffle=False)
-    ##  TODO: 
-    # hyperparametres
-    embed_dim  = 100
-    c = 0
-    model = Model_attention(embed_dim, c).to(device)
-    criterion = nn.BCELoss
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
-    writer = SummaryWriter()
-
-    for epoch in range(epochs):
-        model.train()
-        for x,y,l in tqdm(train_loader):
-            optimizer.zero_grad()
-            y_pred = model(x,l)
-            loss = criterion(y_pred, y)
-            loss.backward()
-            optimizer.step()
-            loss_epoch += loss.item()
-            writer.add_scalar("Loss/train", loss_epoch, epoch)
-            writer.add_scalar("Accuracy/train", torch.sum(torch.argmax(y_pred, dim=1) == y).item() / len(y), epoch)
-
-
-        model.eval()
-        with torch.no_grad():
-            for x,y,l in tqdm(test_loader):
-                y_pred = model(x,l)
-                loss = criterion(y_pred, y)
-                loss_epoch += loss.item()
-                writer.add_scalar("Loss/train", loss_epoch, epoch)
-                writer.add_scalar("Accuracy/test", torch.sum(torch.argmax(y_pred, dim=1) == y).item() / len(y), epoch)
-        
     
+    # hyperparametres
+    c = 0
+    if modeltype == 1:
+        model = Model_attention(emb_size, c).to(device)
+    elif modeltype == 2:
+        pass
+    criterion = nn.BCELoss(reduction='mean')
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    writer = SummaryWriter()
+    acc_train = BinaryAccuracy().to(device)
+    acc_test = BinaryAccuracy().to(device)
 
+    train(model, train_loader, test_loader, optimizer, criterion, epochs, device, writer, acc_train, acc_test)
 
 
 if __name__ == "__main__":
